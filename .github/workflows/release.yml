@@ -35,10 +35,10 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     environment: release
+    # The App token does every write; GITHUB_TOKEN stays read-only, so callers
+    # don't have to grant more.
     permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
+      contents: read
     outputs:
       released: ${{ steps.rp.outputs.release_created }}
       version: ${{ steps.rp.outputs.version }}

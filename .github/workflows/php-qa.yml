@@ -38,20 +38,34 @@ jobs:
       - run: vendor/bin/deptrac analyse --no-progress
       - run: composer lint:twig
 
+  # hashFiles() only works inside steps, so the job checks for package.json first.
   javascript:
-    if: hashFiles('package.json') != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - id: js
+        run: |
+          if [ -f package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No package.json in this repository, so there is no JavaScript to check." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.js.outputs.present == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - run: npm ci --no-audit --no-fund
-      - run: npm audit --audit-level=high
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:unit
-      - run: npm run typecheck
-      - run: npm run test:browser
+      - if: steps.js.outputs.present == 'true'
+        run: npm ci --no-audit --no-fund
+      - if: steps.js.outputs.present == 'true'
+        run: npm audit --audit-level=high
+      - if: steps.js.outputs.present == 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.js.outputs.present == 'true'
+        run: npm run test:unit
+      - if: steps.js.outputs.present == 'true'
+        run: npm run typecheck
+      - if: steps.js.outputs.present == 'true'
+        run: npm run test:browser
 
   dependency-review:
     if: github.event_name == 'pull_request'
