@@ -1,0 +1,101 @@
+name: Release
+
+# release-please opens a release PR with the changelog; on merge it tags
+# vX.Y.Z, publishes the GitHub Release and updates branch-alias.
+# Then Packagist is nudged and polled. RELEASING.md §4.2 and §5.
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: Composer package name, for example sightpress/plugin-core.
+        type: string
+        required: true
+      dependents:
+        description: JSON array of repositories (without the sightpress- prefix) to notify.
+        type: string
+        default: '[]'
+      event-type:
+        type: string
+        default: package-released
+    secrets:
+      PACKAGIST_USERNAME:
+        required: false
+      PACKAGIST_API_TOKEN:
+        required: false
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    outputs:
+      released: ${{ steps.rp.outputs.release_created }}
+      version: ${{ steps.rp.outputs.version }}
+    steps:
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        id: app
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: rp
+        with:
+          token: ${{ steps.app.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: ${{ github.ref_name }}
+
+  packagist:
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Packagist (safety net; the GitHub webhook is the primary path)
+        env:
+          PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
+          PACKAGIST_API_TOKEN: ${{ secrets.PACKAGIST_API_TOKEN }}
+          REPO_URL: https://github.com/${{ github.repository }}
+        run: |
+          curl --fail --silent --show-error -X POST \
+            "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_API_TOKEN}" \
+            -H 'content-type: application/json' \
+            -d "{\"repository\":{\"url\":\"${REPO_URL}\"}}"
+      - name: Wait for the new tag on Packagist (10 minutes)
+        env:
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          # Packagist keeps the tag name, so v1.2.0 shows as "version":"v1.2.0".
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent "https://repo.packagist.org/p2/${PACKAGE}.json" | grep -Eq "\"version\":\"v?${VERSION}\""; then
+              echo "${PACKAGE} ${VERSION} is on Packagist."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::${PACKAGE} ${VERSION} did not appear on Packagist within 10 minutes."
+          exit 1
+
+  propagate:
+    needs: [release-please, packagist]
+    if: needs.release-please.outputs.released == 'true' && inputs.dependents != '[]'
+    uses: sightpress/.github/.github/workflows/propagate.yml@main
+    with:
+      package: ${{ inputs.package }}
+      version: ${{ needs.release-please.outputs.version }}
+      event-type: ${{ inputs.event-type }}
+      targets: ${{ inputs.dependents }}
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

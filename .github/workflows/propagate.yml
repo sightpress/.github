@@ -1,0 +1,58 @@
+name: Propagate
+
+# repository_dispatch fan-out to the packages above in the dependency order.
+# Idempotent; each target's result goes in the job summary. RELEASING.md §6.
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      event-type:
+        type: string
+        required: true
+      targets:
+        description: JSON array of repositories, without the sightpress- prefix.
+        type: string
+        required: true
+    secrets:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.targets) }}
+    steps:
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        id: app
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: sightpress
+          repositories: sightpress-${{ matrix.target }}
+      - name: Dispatch ${{ inputs.event-type }} to ${{ matrix.target }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          EVENT_TYPE: ${{ inputs.event-type }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          gh api "repos/sightpress/sightpress-${TARGET}/dispatches" \
+            -f event_type="${EVENT_TYPE}" \
+            -f "client_payload[package]=${PACKAGE}" \
+            -f "client_payload[version]=${VERSION}"
+          echo "${PACKAGE} ${VERSION} -> ${TARGET}: dispatched" >> "$GITHUB_STEP_SUMMARY"

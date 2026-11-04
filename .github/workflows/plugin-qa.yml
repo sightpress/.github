@@ -1,0 +1,91 @@
+name: Plugin QA
+
+# Quality bar for official plugins and plugin-template. RELEASING.md §4.1.
+# Until the packages are published, sibling checkouts are the source:
+# composer.dev.json points at ../plugin-core and ../core.
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        type: string
+        default: '8.4'
+      plugin-core-ref:
+        description: Ref of plugin-core to test against (for example main or v1.2.0).
+        type: string
+        default: ''
+      core-ref:
+        description: Ref of core to test against.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: plugin
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: sightpress/sightpress-plugin-core
+          ref: ${{ inputs.plugin-core-ref }}
+          path: plugin-core
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: sightpress/sightpress-core
+          ref: ${{ inputs.core-ref }}
+          path: core
+        continue-on-error: true
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          extensions: intl, mbstring, sodium
+          coverage: xdebug
+          tools: composer:v2
+      - run: composer validate --strict
+        working-directory: plugin
+      - run: COMPOSER=composer.dev.json composer install --no-interaction --prefer-dist
+        working-directory: plugin
+      - run: COMPOSER=composer.dev.json composer audit
+        working-directory: plugin
+      - run: vendor/bin/sightpress-check-licenses
+        working-directory: plugin
+      - run: XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-clover var/coverage/clover.xml
+        working-directory: plugin
+      - run: vendor/bin/sightpress-check-coverage var/coverage/clover.xml
+        working-directory: plugin
+      - run: vendor/bin/phpstan analyse --memory-limit=1G
+        working-directory: plugin
+      - run: vendor/bin/php-cs-fixer fix --dry-run --diff
+        working-directory: plugin
+      - run: vendor/bin/rector process --dry-run
+        working-directory: plugin
+      - run: vendor/bin/deptrac analyse --no-progress
+        working-directory: plugin
+      - run: vendor/bin/sightpress-check-translations translations "$(php -r 'echo str_replace(["-", "."], "_", json_decode(file_get_contents("composer.json"), true)["extra"]["sightpress"]["id"]);')" --manifest=composer.json
+        working-directory: plugin
+
+  e2e:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      # Skips with a reason until SIGHTPRESS_BASE_URL points at a served site;
+      # the skeleton's integration CI serves one with this plugin enabled.
+      - run: npx playwright test
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
