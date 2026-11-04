@@ -21,22 +21,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+      # A repository with no code yet has nothing to check; say so in words.
+      # Every check runs as soon as it has a composer.json.
+      - id: code
+        run: |
+          if [ -f composer.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No composer.json in this repository yet, so there is no PHP to check." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.code.outputs.present == 'true'
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: ${{ inputs.php-version }}
           extensions: intl, mbstring, sodium
           coverage: xdebug
           tools: composer:v2
-      - run: composer validate --strict
-      - run: composer update --no-interaction --prefer-dist ${{ inputs.composer-flags }}
-      - run: composer audit
-      - run: composer check:licenses
-      - run: composer test:coverage
-      - run: vendor/bin/phpstan analyse --memory-limit=1G
-      - run: vendor/bin/php-cs-fixer fix --dry-run --diff
-      - run: vendor/bin/rector process --dry-run
-      - run: vendor/bin/deptrac analyse --no-progress
-      - run: composer lint:twig
+      - if: steps.code.outputs.present == 'true'
+        run: composer validate --strict
+      - if: steps.code.outputs.present == 'true'
+        run: composer update --no-interaction --prefer-dist ${{ inputs.composer-flags }}
+      - if: steps.code.outputs.present == 'true'
+        run: composer audit
+      - if: steps.code.outputs.present == 'true'
+        run: composer check:licenses
+      - if: steps.code.outputs.present == 'true'
+        run: composer test:coverage
+      - if: steps.code.outputs.present == 'true'
+        run: vendor/bin/phpstan analyse --memory-limit=1G
+      - if: steps.code.outputs.present == 'true'
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff
+      - if: steps.code.outputs.present == 'true'
+        run: vendor/bin/rector process --dry-run
+      - if: steps.code.outputs.present == 'true'
+        run: vendor/bin/deptrac analyse --no-progress
+      - if: steps.code.outputs.present == 'true'
+        run: composer lint:twig
 
   # hashFiles() only works inside steps, so the job checks for package.json first.
   javascript:
