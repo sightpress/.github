@@ -57,6 +57,33 @@ jobs:
         run: vendor/bin/deptrac analyse --no-progress
       - if: steps.code.outputs.present == 'true'
         run: composer lint:twig
+      # Optional gates: each runs when the repository defines its script (core does),
+      # and says so in words when it doesn't.
+      - if: steps.code.outputs.present == 'true'
+        name: Performance budgets
+        run: |
+          if composer run-script --list 2>/dev/null | grep -qE '^ *check:budgets( |$)'; then
+            composer check:budgets
+          else
+            echo "No check:budgets script in this repository, so there are no budgets to check." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # Missing or empty targets fail every build. Targets still marked
+      # needs-review-translation are reported here as a warning and block only
+      # release builds (RELEASING.md §7).
+      - if: steps.code.outputs.present == 'true'
+        name: Translations in the 11 launch locales
+        run: |
+          if ! composer run-script --list 2>/dev/null | grep -qE '^ *check:translations( |$)'; then
+            echo "No check:translations script in this repository, so there are no catalogues to check." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          set -o pipefail
+          composer check:translations | tee "$RUNNER_TEMP/translations.txt"
+          waiting=$(grep -oE 'needs-review-translation\): [0-9]+' "$RUNNER_TEMP/translations.txt" | grep -oE '[0-9]+$' || echo 0)
+          if [ "${waiting:-0}" != "0" ]; then
+            echo "::warning::$waiting translation targets are waiting for a fluent reviewer (needs-review-translation). A release build refuses them."
+            echo "$waiting translation targets are waiting for review (needs-review-translation)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # hashFiles() only works inside steps, so the job checks for package.json first.
   javascript:
@@ -74,6 +101,17 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      # Browser tests in core run the admin on PHP's built-in server, and the
+      # shared test kit and CSS rules come from vendor/sightpress/plugin-core.
+      - if: steps.js.outputs.present == 'true' && hashFiles('composer.json') != ''
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          extensions: intl, mbstring, sodium
+          coverage: none
+          tools: composer:v2
+      - if: steps.js.outputs.present == 'true' && hashFiles('composer.json') != ''
+        run: composer install --no-interaction --prefer-dist --no-progress
       - if: steps.js.outputs.present == 'true'
         run: npm ci --no-audit --no-fund
       - if: steps.js.outputs.present == 'true'
