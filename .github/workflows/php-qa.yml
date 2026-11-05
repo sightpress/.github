@@ -130,4 +130,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+        with:
+          fetch-depth: 0
+      # A repository's first pull request adds its first manifest, so the base
+      # branch has no dependency graph to compare against yet. Every later
+      # pull request is reviewed.
+      - id: base
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git cat-file -e "$BASE:composer.json" 2>/dev/null || git cat-file -e "$BASE:package.json" 2>/dev/null; then
+            echo "has-manifest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "The base branch has no composer.json or package.json yet, so there are no dependencies to compare. Dependency review runs on every later pull request." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.base.outputs.has-manifest == 'true'
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
