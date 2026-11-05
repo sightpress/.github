@@ -66,7 +66,9 @@ jobs:
         working-directory: plugin
       - run: vendor/bin/deptrac analyse --no-progress
         working-directory: plugin
-      - run: vendor/bin/sightpress-check-translations translations "$(php -r 'echo str_replace(["-", "."], "_", json_decode(file_get_contents("composer.json"), true)["extra"]["sightpress"]["id"]);')" --manifest=composer.json
+      # Each repository's own script: a plugin checks the locales its manifest
+      # requires (--manifest), the template checks the 11 launch locales.
+      - run: composer check:translations
         working-directory: plugin
 
   e2e:
