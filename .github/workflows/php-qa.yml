@@ -68,21 +68,29 @@ jobs:
             echo "No check:budgets script in this repository, so there are no budgets to check." >> "$GITHUB_STEP_SUMMARY"
           fi
       # Missing or empty targets fail every build. Targets still marked
-      # needs-review-translation are reported here as a warning and block only
-      # release builds (RELEASING.md §7).
+      # needs-review-translation are a warning on ordinary pull requests and
+      # fail the release pull request, so no release ships them
+      # (RELEASING.md §7).
       - if: steps.code.outputs.present == 'true'
         name: Translations in the 11 launch locales
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           if ! composer run-script --list 2>/dev/null | grep -qE '^ *check:translations( |$)'; then
             echo "No check:translations script in this repository, so there are no catalogues to check." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ "$HEAD_REF" == release-please--* ]]; then
+            echo "Release build: targets waiting for review block the release."
+            composer check:translations -- --release
             exit 0
           fi
           set -o pipefail
           composer check:translations | tee "$RUNNER_TEMP/translations.txt"
           waiting=$(grep -oE 'needs-review-translation\): [0-9]+' "$RUNNER_TEMP/translations.txt" | grep -oE '[0-9]+$' || echo 0)
           if [ "${waiting:-0}" != "0" ]; then
-            echo "::warning::$waiting translation targets are waiting for a fluent reviewer (needs-review-translation). A release build refuses them."
-            echo "$waiting translation targets are waiting for review (needs-review-translation)." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::$waiting translation targets are waiting for a fluent reviewer (needs-review-translation). The release pull request refuses them."
+            echo "$waiting translation targets are waiting for review (needs-review-translation). The release pull request refuses them." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # hashFiles() only works inside steps, so the job checks for package.json first.
