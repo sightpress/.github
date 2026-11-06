@@ -1,8 +1,9 @@
 name: Plugin QA
 
 # Quality bar for official plugins and plugin-template. RELEASING.md §4.1.
-# Until the packages are published, sibling checkouts are the source:
-# composer.dev.json points at ../plugin-core and ../core.
+# Dependencies come from Packagist, as they do for anyone who installs the
+# plugin. Only the skeleton's integration job builds from sibling checkouts
+# (composer.dev.json).
 
 on:
   workflow_call:
@@ -11,11 +12,11 @@ on:
         type: string
         default: '8.4'
       plugin-core-ref:
-        description: Ref of plugin-core to test against (for example main or v1.2.0).
+        description: Released plugin-core version to test against (for example v1.2.0). Empty means the newest one the constraint allows.
         type: string
         default: ''
       core-ref:
-        description: Ref of core to test against.
+        description: Released core version to test against (for example v1.1.0). Empty means the newest one the constraint allows.
         type: string
         default: ''
 
@@ -27,19 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          path: plugin
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: sightpress/sightpress-plugin-core
-          ref: ${{ inputs.plugin-core-ref }}
-          path: plugin-core
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: sightpress/sightpress-core
-          ref: ${{ inputs.core-ref }}
-          path: core
-        continue-on-error: true
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: ${{ inputs.php-version }}
@@ -47,29 +35,60 @@ jobs:
           coverage: xdebug
           tools: composer:v2
       - run: composer validate --strict
-        working-directory: plugin
-      - run: COMPOSER=composer.dev.json composer install --no-interaction --prefer-dist
-        working-directory: plugin
-      - run: COMPOSER=composer.dev.json composer audit
-        working-directory: plugin
+      # A pinned version must already be on Packagist: the release workflow
+      # waits for it before it notifies this repository. A version outside the
+      # plugin's constraint fails here, because widening it needs a pull request
+      # (RELEASING.md §6).
+      - name: Install dependencies from Packagist
+        env:
+          PLUGIN_CORE_REF: ${{ inputs.plugin-core-ref }}
+          CORE_REF: ${{ inputs.core-ref }}
+        run: |
+          with=()
+          for pair in "sightpress/plugin-core=$PLUGIN_CORE_REF" "sightpress/core=$CORE_REF"; do
+            package="${pair%%=*}"
+            ref="${pair#*=}"
+            [ -z "$ref" ] && continue
+            version="${ref#v}"
+            if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+              echo "::error::$package: \"$ref\" is not a released version. Give a tag such as v1.2.0, or leave it empty for the newest release."
+              exit 1
+            fi
+            echo "Testing against $package $version."
+            with+=(--with "$package:$version")
+          done
+          composer update --no-interaction --prefer-dist "${with[@]}"
+          composer show 'sightpress/*'
+      - run: composer audit
       - run: vendor/bin/sightpress-check-licenses
-        working-directory: plugin
       - run: XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-clover var/coverage/clover.xml
-        working-directory: plugin
       - run: vendor/bin/sightpress-check-coverage var/coverage/clover.xml
-        working-directory: plugin
       - run: vendor/bin/phpstan analyse --memory-limit=1G
-        working-directory: plugin
       - run: vendor/bin/php-cs-fixer fix --dry-run --diff
-        working-directory: plugin
       - run: vendor/bin/rector process --dry-run
-        working-directory: plugin
       - run: vendor/bin/deptrac analyse --no-progress
-        working-directory: plugin
       # Each repository's own script: a plugin checks the locales its manifest
       # requires (--manifest), the template checks the 11 launch locales.
-      - run: composer check:translations
-        working-directory: plugin
+      # Missing or empty targets fail every build. Targets still marked
+      # needs-review-translation are a warning on ordinary pull requests and
+      # fail the release pull request, so no release ships them
+      # (RELEASING.md §7).
+      - name: Translations
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [[ "$HEAD_REF" == release-please--* ]]; then
+            echo "Release build: targets waiting for review block the release."
+            composer check:translations -- --release
+            exit 0
+          fi
+          set -o pipefail
+          composer check:translations | tee "$RUNNER_TEMP/translations.txt"
+          waiting=$(grep -oE 'needs-review-translation\): [0-9]+' "$RUNNER_TEMP/translations.txt" | grep -oE '[0-9]+$' || echo 0)
+          if [ "${waiting:-0}" != "0" ]; then
+            echo "::warning::$waiting translation targets are waiting for a fluent reviewer (needs-review-translation). The release pull request refuses them."
+            echo "$waiting translation targets are waiting for review (needs-review-translation). The release pull request refuses them." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   e2e:
     needs: quality
