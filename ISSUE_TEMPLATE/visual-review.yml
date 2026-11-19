@@ -1,0 +1,55 @@
+name: Interface review
+description: For sighted reviewers - contrast, focus, spacing, zoom and reflow, dark mode, forced colours, icons and pictures.
+labels: ["visual review", "accessibility", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reviewing the interface. Fields marked "(required)" must be filled in; the others are optional.
+        Every screenshot needs a text description: whoever reads this may not be able to see it.
+  - type: input
+    id: page
+    attributes:
+      label: Page or screen (required)
+      description: Its address or its heading, for example "/admin/analytics".
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem is it? (required)
+      options:
+        - Colour contrast
+        - Keyboard focus not visible
+        - Text cut off or overlapping at 200% or 400% zoom, or at 320 pixels wide
+        - Spacing or alignment
+        - Dark mode
+        - Forced colours (Windows contrast themes)
+        - Icons, generated images or charts
+        - Documentation screenshots
+        - The visible label doesn't match what it does
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Browser, zoom level and colour mode (required)
+      description: For example "Edge on Windows 11, 200% zoom, dark mode".
+    validations:
+      required: true
+  - type: textarea
+    id: wrong
+    attributes:
+      label: What looks wrong, and where on the screen? (required)
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: What would look right? (optional)
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots and their text descriptions (optional)
+      description: Attach the screenshot here, then describe in words what it shows and where the problem is.

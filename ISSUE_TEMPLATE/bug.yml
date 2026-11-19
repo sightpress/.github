@@ -1,0 +1,50 @@
+name: Report a problem
+description: Something in SightPress doesn't work, or shows an error.
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Fields marked "(required)" must be filled in; the others are optional.
+        If the problem is about a screen reader, keyboard, zoom or colours, use "Report an accessibility barrier"
+        instead. Never report a security problem here.
+  - type: textarea
+    id: doing
+    attributes:
+      label: What were you doing? (required)
+      description: For example "publishing a page in Spanish from the page editor".
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened? (required)
+      description: Copy any error message as text.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen? (required)
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen again (optional)
+      description: One step per line, starting from signing in or from the command you typed.
+  - type: input
+    id: version
+    attributes:
+      label: SightPress version (optional)
+      description: For example 0.3.0. "composer show sightpress/core" in the skeleton folder shows it.
+  - type: input
+    id: environment
+    attributes:
+      label: Browser, operating system, PHP version and database (optional)
+      description: Whatever you know, for example "Firefox 140 on Windows 11, SQLite".
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots and their text descriptions (optional)
+      description: If you attach a screenshot, describe in words what it shows. Whoever reads this may not be able to see it.

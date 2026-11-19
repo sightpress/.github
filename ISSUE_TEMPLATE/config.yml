@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem privately
+    url: https://github.com/sightpress/core/security/advisories/new
+    about: Never report a security problem in a public issue. Use this private form, or email security@sightpress.org.
+  - name: Ask a question or share an idea
+    url: https://github.com/sightpress/core/discussions
+    about: Questions and ideas go to GitHub Discussions.
+  - name: Report by email, without a GitHub account
+    url: https://docs.sightpress.org/latest/how-to/report-a-problem/
+    about: Email contribute@sightpress.org in any format. A maintainer adds your report here for you.
